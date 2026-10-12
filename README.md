@@ -26,10 +26,12 @@ and Playwright runs them in real browsers (Chrome, Firefox, Safari/WebKit).
 6. [Add the BDD framework (Gherkin)](#6-add-the-bdd-framework-gherkin)
 7. [Run the tests](#7-run-the-tests)
 8. [Write a new test](#8-write-a-new-test)
-9. [Working with branches](#9-working-with-branches)
-10. [Recommended VS Code extensions](#10-recommended-vs-code-extensions)
-11. [Troubleshooting](#11-troubleshooting)
-12. [Command cheat sheet](#12-command-cheat-sheet)
+9. [Branches: development vs production](#9-branches-development-vs-production)
+10. [GitHub Actions (automatic tests on GitHub)](#10-github-actions-automatic-tests-on-github)
+11. [Protect the `main` branch](#11-protect-the-main-branch)
+12. [Recommended VS Code extensions](#12-recommended-vs-code-extensions)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Command cheat sheet](#14-command-cheat-sheet)
 
 ---
 
@@ -350,48 +352,186 @@ In **`.github/workflows/playwright.yml`**, change the test step so CI also runs 
 
 ---
 
-## 9. Working with branches
+## 9. Branches: development vs production
 
-A **branch** is a separate line of work. `main` holds the stable version; you make changes on your own branch and merge them in when they're ready.
+A **branch** is a separate line of work. This project uses two:
 
-**Create a branch and switch to it:**
+| Branch | Role | Rule |
+|---|---|---|
+| `main` | **Production.** The stable, working version. | Never edit directly. Changes only arrive through a Pull Request. |
+| `milleandrei` | **Development.** Where you write and try out new tests. | Commit and push here as often as you like. |
 
-```bash
-git switch -c your-branch-name
+```
+milleandrei (development)  ──commit──commit──commit──┐
+                                                     │  Pull Request
+main (production)          ──────────────────────────●──── (tests must pass ✓)
 ```
 
-**Switch between existing branches:**
+### 9.1 Set up both branches (one time)
 
-```bash
-git switch main
-git switch your-branch-name
-```
+1. **Commit something on `main` first.** A branch only really exists once it has at least one commit.
 
-**See your branches** (the current one has a `*`):
+2. **Push `main` to GitHub.** This step is easy to forget. If you skip it, GitHub only knows about your development branch and treats it as the main one.
 
-```bash
-git branch
-```
+   ```bash
+   git push -u origin main
+   ```
 
-**Save your work and upload it:**
+3. **Create the development branch** from `main` and push it:
 
-```bash
-git add .
-git commit -m "Describe what you changed"
-git push -u origin your-branch-name    # -u is only needed the first time
-```
+   ```bash
+   git switch -c milleandrei
+   git push -u origin milleandrei
+   ```
 
-Then open a **Pull Request** on GitHub to merge your branch into `main`.
+4. **Make `main` the default branch on GitHub:**
+   1. Open your repo on GitHub and click the **⚙️ Settings** tab (top right of the tab row, next to *Insights*).
+   2. On the **General** page, scroll to **Default branch**.
+   3. Click the **⇄** (two arrows) button, choose **main**, click **Update**, then confirm.
+
+5. **Check it worked.** On GitHub, the branch dropdown (top left of the file list) should show both `main` and `milleandrei`, with `main` marked as **default**. In the terminal:
+
+   ```bash
+   git branch -vv
+   ```
+
+   Both branches should show a `[origin/...]` link.
+
+### 9.2 Day-to-day workflow
+
+1. **Make sure you're on the development branch:**
+
+   ```bash
+   git switch milleandrei
+   ```
+
+2. **Write tests, then save and upload your work:**
+
+   ```bash
+   git add .
+   git commit -m "Describe what you changed"
+   git push
+   ```
+
+3. **When it's ready for production, open a Pull Request (PR):**
+   1. On GitHub, go to **Pull requests → New pull request**.
+   2. Set **base: `main`** ← **compare: `milleandrei`**.
+   3. Click **Create pull request**, give it a title and short description, and create it.
+   4. Wait for the automatic tests (see [step 10](#10-github-actions-automatic-tests-on-github)) to show a green ✓.
+   5. Click **Merge pull request**.
+
+4. **Bring the updated `main` back to your computer:**
+
+   ```bash
+   git switch main
+   git pull
+   git switch milleandrei
+   ```
+
+### 9.3 Things to know
 
 > ⚠️ **Commit before switching branches.** Uncommitted changes don't belong to any branch yet, so they follow you when you switch. This makes it look like your branches are "mixing".
 
-> ℹ️ A new branch starts as an exact copy of the branch you were on. The two only become different once you commit something.
+> ℹ️ A new branch starts as an exact copy of the branch you were on, so right after creating it both branches look identical. They only become different once you commit something.
 
-> ℹ️ Make sure `main` is pushed to GitHub (`git push -u origin main`) and set as the default branch in **GitHub → repo Settings → General → Default branch**.
+> ℹ️ `git add`, `git commit` and `git push` work the same on every branch. Only *where* you push changes, and what GitHub does afterwards.
 
 ---
 
-## 10. Recommended VS Code extensions
+## 10. GitHub Actions (automatic tests on GitHub)
+
+GitHub Actions runs your tests on GitHub's own computers after you push. It's set up by `.github/workflows/playwright.yml`, which `npm init playwright` created in [step 4](#4-create-the-playwright-project).
+
+It **doesn't change anything you do on your computer.** It only reacts once a push reaches GitHub:
+
+```
+Your computer                    GitHub
+─────────────                    ──────
+git add     (nothing happens)
+git commit  (nothing happens)
+git push  ───────────────────►   code arrives
+                                 └─► Does this match a trigger in playwright.yml?
+                                       yes → runs the tests on a GitHub server
+                                       no  → nothing happens
+```
+
+### 10.1 When do the tests run?
+
+The triggers are at the top of `playwright.yml`:
+
+```yaml
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+```
+
+| You do this | Tests run? |
+|---|---|
+| Push to `milleandrei` | **No.** It isn't listed under `push`. |
+| Open a Pull Request from `milleandrei` into `main` | **Yes.** The result shows on the PR page. |
+| Push more commits to a branch that has an open PR | **Yes**, the tests run again. |
+| Push to `main` or merge a PR into it | **Yes.** |
+
+> 💡 Want tests to run on every development push too? Add your branch to the list: `branches: [ main, master, milleandrei ]`.
+
+### 10.2 Reading the results
+
+- **🟡 Yellow dot:** tests are running.
+- **✅ Green check:** all tests passed.
+- **❌ Red cross:** something failed. Click it, then **Details**, to see which test failed.
+- The **Actions** tab on your repo lists every run.
+- Each run saves the HTML report as a downloadable **`playwright-report`** file, with screenshots and videos of failures. Find it at the bottom of the run's page under **Artifacts**.
+
+> ℹ️ On its own, a red ❌ **doesn't block anything**. Your push still succeeds and you can still merge. To stop failing tests from reaching `main`, set up branch protection ([step 11](#11-protect-the-main-branch)).
+
+> ℹ️ Actions is free for public repos. Private repos get a free monthly allowance of minutes, and a small test suite uses very little.
+
+---
+
+## 11. Protect the `main` branch
+
+Branch protection makes GitHub enforce the "production" rules: nobody can push straight to `main`, and a PR can only be merged when the tests pass.
+
+This is set on the GitHub **website**. Git commands in the terminal can't change it.
+
+> ℹ️ Branch protection is free for **public** repos. Private repos need a paid GitHub plan.
+
+### 11.1 Create a ruleset
+
+1. Open your repo on GitHub and click **⚙️ Settings**.
+2. In the left sidebar under **Code and automation**, click **Rules → Rulesets**. Or click **Branches**, which offers the same thing.
+3. Click **New ruleset → New branch ruleset**.
+4. Fill in:
+
+   | Setting | What to do |
+   |---|---|
+   | **Ruleset name** | `protect-main` |
+   | **Enforcement status** | **Active** (if it says *Disabled*, the rules do nothing) |
+   | **Target branches** | Click **Add target → Include by pattern**, type `main`, and click **Add Inclusion pattern** |
+   | ☑ **Restrict deletions** | Leave ticked. Stops `main` from being deleted. |
+   | ☑ **Block force pushes** | Leave ticked. Stops anyone from rewriting `main`'s history. |
+   | ☑ **Require a pull request before merging** | Tick it. Set **Required approvals** to **0** (see the warning below). |
+   | ☑ **Require status checks to pass** | Tick it, click **Add checks**, search for `test`, and select it. That's the Playwright job. |
+
+5. Click **Create**.
+
+> ⚠️ **Set Required approvals to 0 if you work alone.** GitHub doesn't let you approve your own Pull Request, so with 1 or more approvals required you'd never be able to merge.
+
+> ⚠️ **Warning: "This ruleset does not target any resources and will not be applied."** The **Target branches** section is empty. Add `main` with **Include by pattern** as shown above. Prefer the pattern over *Include default branch*, because if the default branch is still set to your development branch, that option protects the wrong branch.
+
+> ℹ️ **`test` doesn't show up when adding status checks?** GitHub only lists checks that have run at least once recently. Push `main` or open a PR, wait for the run in the **Actions** tab to finish, then try again.
+
+### 11.2 What changes afterwards
+
+- `git push` directly to `main` is **rejected**. That's expected. All changes go through `milleandrei` and a Pull Request.
+- The **Merge** button on a PR stays grey until the tests show a green ✓.
+- As the repo owner, you can still bypass the rule in an emergency.
+
+---
+
+## 12. Recommended VS Code extensions
 
 Open Extensions (`Ctrl+Shift+X`) and search for these IDs:
 
@@ -413,7 +553,7 @@ If the Cucumber extension can't find your step definitions, create `.vscode/sett
 
 ---
 
-## 11. Troubleshooting
+## 13. Troubleshooting
 
 | Problem | Fix |
 |---|---|
@@ -423,11 +563,17 @@ If the Cucumber extension can't find your step definitions, create `.vscode/sett
 | My `.feature` changes aren't running | You ran `npx playwright test`. Use `npm test` instead. |
 | `Executable doesn't exist` / browser not found | Run `npx playwright install`. |
 | Tests don't appear in VS Code's Testing panel | Run `npx bddgen`, then click the refresh icon in the Testing panel. |
-| My branches look the same | That's normal right after creating a branch. They split once you commit. See [step 9](#9-working-with-branches). |
+| My branches look the same | That's normal right after creating a branch. They split once you commit. See [step 9](#9-branches-development-vs-production). |
+| On GitHub I only see my development branch, not `main` | `main` was never pushed. Run `git push -u origin main`, then make it the default branch. See [step 9.1](#91-set-up-both-branches-one-time). |
+| My development branch is the "default" on GitHub | It was the first branch pushed. Change it under **Settings → General → Default branch**. |
+| Tests didn't run on GitHub after I pushed | Pushes to `milleandrei` don't trigger tests, only PRs and `main` do. See [step 10.1](#101-when-do-the-tests-run). |
+| `This ruleset does not target any resources` | Add `main` under **Target branches → Include by pattern**. See [step 11.1](#111-create-a-ruleset). |
+| `git push` to `main` is rejected | Branch protection is working. Push to `milleandrei` and open a Pull Request instead. |
+| The **Merge** button is grey | Tests haven't passed yet, or **Required approvals** is above 0. See [step 11](#11-protect-the-main-branch). |
 
 ---
 
-## 12. Command cheat sheet
+## 14. Command cheat sheet
 
 ```bash
 # ---- One-time setup ----
@@ -445,10 +591,21 @@ npm test -- --headed            # show the browser
 npm run test:ui                 # interactive UI mode
 npm run report                  # open last HTML report
 
-# ---- Git ----
+# ---- Git: everyday ----
 git status                      # what has changed?
-git switch -c new-branch        # create + switch to a branch
+git branch -vv                  # list branches (+ their GitHub links)
+git switch milleandrei          # go to the development branch
 git add .                       # stage all changes
 git commit -m "message"         # save a snapshot
 git push                        # upload to GitHub
+
+# ---- Git: after a PR is merged into main ----
+git switch main
+git pull                        # download the updated main
+git switch milleandrei          # back to development
+
+# ---- Git: one-time branch setup ----
+git push -u origin main         # put main on GitHub
+git switch -c milleandrei       # create the development branch
+git push -u origin milleandrei  # put it on GitHub
 ```
