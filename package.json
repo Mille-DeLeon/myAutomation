@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "test": "bddgen && playwright test",
+    "test:ui": "bddgen && playwright test --ui",
+    "report": "playwright show-report"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Mille-DeLeon/myAutomation.git"
@@ -18,6 +22,7 @@
   "homepage": "https://github.com/Mille-DeLeon/myAutomation#readme",
   "devDependencies": {
     "@playwright/test": "^1.64.0",
-    "@types/node": "^26.6.5"
+    "@types/node": "^26.6.5",
+    "playwright-bdd": "^9.2.1"
   }
 }
