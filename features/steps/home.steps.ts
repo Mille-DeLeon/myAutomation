@@ -2,7 +2,7 @@ import { expect } from '@playwright/test';
 import { Given, Then } from './fixtures';
 
 Given('I open the home page', async ({ page }) => {
-  await page.goto('https://testautomationpractice.blogspot.com/');
+  await page.goto('/');
 });
 
 Then('the page title should contain {string}', async ({ page }, text: string) => {
