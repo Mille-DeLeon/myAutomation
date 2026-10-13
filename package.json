@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/Mille-DeLeon/myAutomation#readme",
   "devDependencies": {
+    "@faker-js/faker": "^10.6.0",
     "@playwright/test": "^1.64.0",
     "@types/node": "^26.6.5",
     "playwright-bdd": "^9.2.1"

@@ -12,7 +12,7 @@ Feature: Practice site home page
     Then the page title should contain "Automation Testing Practice"
 ```
 
-and Playwright runs them in real browsers (Chrome, Firefox, Safari/WebKit).
+and Playwright runs them in a real browser. Right now that's **Chrome (Chromium) only**. Firefox and Safari/WebKit are switched off and can be turned back on (see [step 5.1](#51-choose-which-browsers-run)).
 
 ---
 
@@ -26,12 +26,13 @@ and Playwright runs them in real browsers (Chrome, Firefox, Safari/WebKit).
 6. [Add the BDD framework (Gherkin)](#6-add-the-bdd-framework-gherkin)
 7. [Run the tests](#7-run-the-tests)
 8. [Write a new test](#8-write-a-new-test)
-9. [Branches: development vs production](#9-branches-development-vs-production)
-10. [GitHub Actions (automatic tests on GitHub)](#10-github-actions-automatic-tests-on-github)
-11. [Protect the `main` branch](#11-protect-the-main-branch)
-12. [Recommended VS Code extensions](#12-recommended-vs-code-extensions)
-13. [Troubleshooting](#13-troubleshooting)
-14. [Command cheat sheet](#14-command-cheat-sheet)
+9. [Random test data with Faker](#9-random-test-data-with-faker)
+10. [Branches: development vs production](#10-branches-development-vs-production)
+11. [GitHub Actions (automatic tests on GitHub)](#11-github-actions-automatic-tests-on-github)
+12. [Protect the `main` branch](#12-protect-the-main-branch)
+13. [Recommended VS Code extensions](#13-recommended-vs-code-extensions)
+14. [Troubleshooting](#14-troubleshooting)
+15. [Command cheat sheet](#15-command-cheat-sheet)
 
 ---
 
@@ -171,6 +172,40 @@ Screenshots, videos and traces appear in the HTML report (`npm run report`), whi
 
 > ⚠️ Only have **one** `use: { ... }` block at this level. If you copy settings from somewhere, merge them into the existing block instead of pasting a second one.
 
+### 5.1 Choose which browsers run
+
+Each browser is a **project** in the `projects:` list near the bottom of `playwright.config.ts`. Every test runs once per project, so 3 browsers means 3 runs of each test.
+
+To focus on one browser, **comment out** the others rather than deleting them, so they're easy to bring back:
+
+```ts
+projects: [
+  {
+    name: 'chromium',
+    use: { ...devices['Desktop Chrome'] },
+  },
+
+  /* Disabled for now to focus on Chrome. Uncomment to test these browsers again. */
+  // {
+  //   name: 'firefox',
+  //   use: { ...devices['Desktop Firefox'] },
+  // },
+
+  // {
+  //   name: 'webkit',
+  //   use: { ...devices['Desktop Safari'] },
+  // },
+],
+```
+
+> 💡 In VS Code, select lines and press **`Ctrl+/`** to comment or uncomment them all at once.
+
+> ℹ️ **Chromium vs Google Chrome:** `chromium` is Playwright's own copy of the open-source browser Chrome is built on, and it behaves almost the same. To use the real Google Chrome installed on your PC instead, add `channel: 'chrome'`:
+>
+> ```ts
+> use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+> ```
+
 ---
 
 ## 6. Add the BDD framework (Gherkin)
@@ -192,9 +227,11 @@ npm install -D playwright-bdd
 ```
 features/
 ├── home.feature          ← scenarios written in Gherkin
+├── form.feature          ← (added later in step 9)
 └── steps/
     ├── fixtures.ts       ← sets up Given / When / Then
-    └── home.steps.ts     ← the code that runs for each step
+    ├── home.steps.ts     ← the code that runs for each step
+    └── form.steps.ts     ← (added later in step 9)
 ```
 
 ### 6.3 Write a feature file
@@ -220,7 +257,7 @@ import { test, createBdd } from 'playwright-bdd';
 export const { Given, When, Then } = createBdd(test);
 ```
 
-You only write this file once.
+You only write this file once. (In [step 9.2](#92-share-values-between-steps-the-formdata-fixture) it gets a small addition so steps can share data.)
 
 ### 6.5 Write the step definitions
 
@@ -303,8 +340,8 @@ In **`.github/workflows/playwright.yml`**, change the test step so CI also runs 
 
 | Command | What it does |
 |---|---|
-| `npm test` | Runs all tests in all browsers |
-| `npm test -- --project=chromium` | Runs tests in Chrome only (faster) |
+| `npm test` | Runs all tests in every browser enabled in the config (currently Chromium only, see [step 5.1](#51-choose-which-browsers-run)) |
+| `npm test -- --project=chromium` | Runs tests in one browser only, useful once several are enabled |
 | `npm test -- --headed` | Runs with the browser window visible |
 | `npm run test:ui` | Opens Playwright's interactive UI to watch and debug tests |
 | `npm run report` | Opens the HTML report from the last run |
@@ -352,7 +389,145 @@ In **`.github/workflows/playwright.yml`**, change the test step so CI also runs 
 
 ---
 
-## 9. Branches: development vs production
+## 9. Random test data with Faker
+
+Typing the same value (like `"Mille"`) in every run only proves that *one* value works. **[Faker](https://fakerjs.dev/)** generates realistic random data (names, emails, phone numbers, addresses and more) so each run tries something different.
+
+Faker is the standard random data library for JavaScript/TypeScript and is widely used with Playwright and BDD. Playwright doesn't include a random data generator of its own.
+
+### 9.1 Install Faker
+
+```bash
+npm install -D @faker-js/faker
+```
+
+### 9.2 Share values between steps (the `formData` fixture)
+
+A `When` step types a random value, and a later `Then` step needs to check that *same* value. Steps can't see each other's variables, so we add a **fixture**: a small storage box that every step in a scenario can read and write. It starts empty for each scenario, so tests never share data.
+
+Update **`features/steps/fixtures.ts`**:
+
+```ts
+import { test as base, createBdd } from 'playwright-bdd';
+
+/* Values entered during a scenario, so later steps can check them. Fresh for every scenario. */
+type Fixtures = {
+  formData: Record<string, string>;
+};
+
+export const test = base.extend<Fixtures>({
+  formData: async ({}, use) => {
+    await use({});
+  },
+});
+
+/* Shared Given/When/Then helpers. Import these in every steps file. */
+export const { Given, When, Then } = createBdd(test);
+```
+
+Any step can now ask for `formData` next to `page`, e.g. `async ({ page, formData }) => { ... }`.
+
+### 9.3 Write the scenario
+
+**`features/form.feature`**
+
+```gherkin
+Feature: Practice site form
+
+  Scenario: Fill in name, email and phone with random data
+    Given I open the home page
+    When I enter a random name
+    And I enter a random email
+    And I enter a random phone number
+    Then the form should show the entered values
+```
+
+> 💡 The scenario says *"a random email"*, not the actual email. Generating the value is the step code's job, so the `.feature` file stays readable.
+
+> 💡 `Given I open the home page` is reused from `home.steps.ts`. No need to write it again.
+
+### 9.4 Write the steps
+
+The page's fields have a `maxlength`, so each generated value is kept within it:
+
+| Field | Locator | maxlength | Example value |
+|---|---|---|---|
+| Name | `#name` | 15 | `Ana Rose Lee` |
+| Email | `#email` | 25 | `kaylee482@test.com` |
+| Phone | `#phone` | 10 | `4829105736` |
+
+**`features/steps/form.steps.ts`**
+
+```ts
+import { expect } from '@playwright/test';
+import { faker } from '@faker-js/faker';
+import { When, Then } from './fixtures';
+
+/* Pause between each key press (in ms) so you can watch the typing. */
+const TYPING_DELAY = 100;
+
+/* Each value is kept within the field's maxlength on the page. */
+When('I enter a random name', async ({ page, formData }) => {
+  /* First, middle and last name together must fit in 15 characters, so keep picking until they do. */
+  do {
+    formData.name = `${faker.person.firstName()} ${faker.person.middleName()} ${faker.person.lastName()}`;
+  } while (formData.name.length > 15);
+  // await page.locator('#name').fill(formData.name);
+  await page.locator('#name').pressSequentially(formData.name, { delay: TYPING_DELAY });
+});
+
+When('I enter a random email', async ({ page, formData }) => {
+  const user = faker.person.firstName().toLowerCase().replace(/[^a-z]/g, '').slice(0, 10);
+  formData.email = `${user}${faker.string.numeric(3)}@test.com`;
+  // await page.locator('#email').fill(formData.email);
+  await page.locator('#email').pressSequentially(formData.email, { delay: TYPING_DELAY });
+});
+
+When('I enter a random phone number', async ({ page, formData }) => {
+  formData.phone = faker.string.numeric({ length: 10, allowLeadingZeros: false });
+  // await page.locator('#phone').fill(formData.phone);
+  await page.locator('#phone').pressSequentially(formData.phone, { delay: TYPING_DELAY });
+});
+
+Then('the form should show the entered values', async ({ page, formData }) => {
+  await expect(page.locator('#name')).toHaveValue(formData.name);
+  await expect(page.locator('#email')).toHaveValue(formData.email);
+  await expect(page.locator('#phone')).toHaveValue(formData.phone);
+});
+```
+
+### 9.5 `fill()` vs `pressSequentially()`
+
+Both put text into a field, but in different ways:
+
+| | `fill()` | `pressSequentially()` |
+|---|---|---|
+| How it enters text | Pastes the whole value at once | Types one character at a time, like a person |
+| Speed | Instant | `{ delay: 100 }` adds a 100 ms pause after each key |
+| Page events | One `input` event | keydown, keypress, input and keyup for **every** character |
+| Use it when | Most of the time, because it's fast and reliable | You want to **watch** the typing, or the page reacts to each key (autocomplete, live validation) |
+
+This project uses `pressSequentially()` with `TYPING_DELAY` so you can follow along in `--headed` or UI mode. The `fill()` lines are kept as comments so you can switch back. To go faster or slower, change the one `TYPING_DELAY` number. A 10-digit phone number at 100 ms takes about 1 second.
+
+### 9.6 Tips for random data
+
+- **Random or fixed?** Use random data when *any valid value* should work, like this form. Use fixed values in the `.feature` file when the exact value matters, e.g. `When I enter "abc" as the email` / `Then I should see an invalid email error`.
+- **Reproduce a failure:** values change every run, so a failure can be hard to repeat. While debugging, add `faker.seed(123);` near the top of the steps file to get the same values every time. Remove it afterwards.
+- **Respect `maxlength`:** a value longer than the field allows gets cut off by the browser, and the `Then` check fails. Use `.slice(0, n)` or a fixed length as shown above.
+
+**Alternatives to Faker** (you don't need these, but you'll see them mentioned):
+
+| Library | When it makes sense |
+|---|---|
+| **@faker-js/faker** ✅ | Default choice: most popular, actively maintained, 60+ languages |
+| Chance.js | Smaller and older, with less realistic data |
+| @ngneat/falso | Faker-like and smaller; that matters for websites, not tests |
+| randexp | Strings matching a pattern, e.g. `/[A-Z]{3}-\d{4}/` → `KQZ-4821` |
+| `crypto.randomUUID()` | Built into Node, no install needed. Gives a unique ID, e.g. for unique emails |
+
+---
+
+## 10. Branches: development vs production
 
 A **branch** is a separate line of work. This project uses two:
 
@@ -367,7 +542,7 @@ milleandrei (development)  ──commit──commit──commit──┐
 main (production)          ──────────────────────────●──── (tests must pass ✓)
 ```
 
-### 9.1 Set up both branches (one time)
+### 10.1 Set up both branches (one time)
 
 1. **Commit something on `main` first.** A branch only really exists once it has at least one commit.
 
@@ -397,7 +572,7 @@ main (production)          ─────────────────�
 
    Both branches should show a `[origin/...]` link.
 
-### 9.2 Day-to-day workflow
+### 10.2 Day-to-day workflow
 
 1. **Make sure you're on the development branch:**
 
@@ -417,7 +592,7 @@ main (production)          ─────────────────�
    1. On GitHub, go to **Pull requests → New pull request**.
    2. Set **base: `main`** ← **compare: `milleandrei`**.
    3. Click **Create pull request**, give it a title and short description, and create it.
-   4. Wait for the automatic tests (see [step 10](#10-github-actions-automatic-tests-on-github)) to show a green ✓.
+   4. Wait for the automatic tests (see [step 11](#11-github-actions-automatic-tests-on-github)) to show a green ✓.
    5. Click **Merge pull request**.
 
 4. **Bring the updated `main` back to your computer:**
@@ -428,7 +603,7 @@ main (production)          ─────────────────�
    git switch milleandrei
    ```
 
-### 9.3 Things to know
+### 10.3 Things to know
 
 > ⚠️ **Commit before switching branches.** Uncommitted changes don't belong to any branch yet, so they follow you when you switch. This makes it look like your branches are "mixing".
 
@@ -438,7 +613,7 @@ main (production)          ─────────────────�
 
 ---
 
-## 10. GitHub Actions (automatic tests on GitHub)
+## 11. GitHub Actions (automatic tests on GitHub)
 
 GitHub Actions runs your tests on GitHub's own computers after you push. It's set up by `.github/workflows/playwright.yml`, which `npm init playwright` created in [step 4](#4-create-the-playwright-project).
 
@@ -455,7 +630,7 @@ git push  ───────────────────►   code ar
                                        no  → nothing happens
 ```
 
-### 10.1 When do the tests run?
+### 11.1 When do the tests run?
 
 The triggers are at the top of `playwright.yml`:
 
@@ -476,7 +651,7 @@ on:
 
 > 💡 Want tests to run on every development push too? Add your branch to the list: `branches: [ main, master, milleandrei ]`.
 
-### 10.2 Reading the results
+### 11.2 Reading the results
 
 - **🟡 Yellow dot:** tests are running.
 - **✅ Green check:** all tests passed.
@@ -484,7 +659,7 @@ on:
 - The **Actions** tab on your repo lists every run.
 - Each run saves the HTML report as a downloadable **`playwright-report`** file, with screenshots and videos of failures. Find it at the bottom of the run's page under **Artifacts**.
 
-> ℹ️ On its own, a red ❌ **doesn't block anything**. Your push still succeeds and you can still merge. To stop failing tests from reaching `main`, set up branch protection ([step 11](#11-protect-the-main-branch)).
+> ℹ️ On its own, a red ❌ **doesn't block anything**. Your push still succeeds and you can still merge. To stop failing tests from reaching `main`, set up branch protection ([step 12](#12-protect-the-main-branch)).
 
 > ℹ️ Actions is free for public repos. Private repos get a free monthly allowance of minutes, and a small test suite uses very little.
 
