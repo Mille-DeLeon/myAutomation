@@ -15,8 +15,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  /* Run one test at a time, so only one browser window is open. */
+  workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
@@ -38,7 +38,16 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      /* Open a visible, maximized browser window. */
+      use: {
+        ...devices['Desktop Chrome'],
+        headless: false,
+        /* viewport: null lets the page fill the window instead of a fixed 1280x720. */
+        viewport: null,
+        /* deviceScaleFactor can't be combined with viewport: null, so drop it from the device preset. */
+        deviceScaleFactor: undefined,
+        launchOptions: { args: ['--start-maximized'] },
+      },
     },
 
     /* Disabled for now to focus on Chrome. Uncomment to test these browsers again. */
