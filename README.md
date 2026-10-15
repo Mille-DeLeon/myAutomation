@@ -12,7 +12,7 @@ Feature: Practice site home page
     Then the page title should contain "Automation Testing Practice"
 ```
 
-and Playwright runs them in a real browser. Right now that's **Chrome (Chromium) only**. Firefox and Safari/WebKit are switched off and can be turned back on (see [step 5.1](#51-choose-which-browsers-run)).
+and Playwright runs them in a real browser. Right now that's **Chrome (Chromium) only**, in a visible, maximized window, one test at a time. Firefox and Safari/WebKit are switched off and can be turned back on (see [step 5.1](#51-choose-which-browsers-run)).
 
 ---
 
@@ -146,6 +146,30 @@ myAutomation/
 └── package-lock.json                  ← exact package versions (don't edit)
 ```
 
+### 4.3 Add a `tsconfig.json`
+
+Without this file, VS Code underlines `process` in `playwright.config.ts` with *"Cannot find name 'process'"*. It's only an editor warning (the tests still run), but it's easy to fix.
+
+Create **`tsconfig.json`** in the project root:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "types": ["node"]
+  }
+}
+```
+
+- **`"types": ["node"]`** is the important line. `process` comes from Node.js, and this tells TypeScript to load Node's type definitions (the `@types/node` package, which `npm init playwright` installs).
+- **`noEmit`** means TypeScript only checks your code and doesn't create `.js` files. Playwright runs the `.ts` files directly.
+
+> 💡 If the red underline doesn't disappear, press `Ctrl+Shift+P` and run **TypeScript: Restart TS Server**.
+
 ---
 
 ## 5. Configure Playwright
@@ -172,6 +196,15 @@ Screenshots, videos and traces appear in the HTML report (`npm run report`), whi
 
 > ⚠️ Only have **one** `use: { ... }` block at this level. If you copy settings from somewhere, merge them into the existing block instead of pasting a second one.
 
+Above the `use:` block, the number of **workers** is also set:
+
+```ts
+/* Run one test at a time, so only one browser window is open. */
+workers: 1,
+```
+
+Each worker is its own browser. With more than one, Playwright runs several tests at the same time in separate windows. That's faster, but hard to watch. With `workers: 1`, tests run one after another in a single window.
+
 ### 5.1 Choose which browsers run
 
 Each browser is a **project** in the `projects:` list near the bottom of `playwright.config.ts`. Every test runs once per project, so 3 browsers means 3 runs of each test.
@@ -182,7 +215,7 @@ To focus on one browser, **comment out** the others rather than deleting them, s
 projects: [
   {
     name: 'chromium',
-    use: { ...devices['Desktop Chrome'] },
+    use: { ...devices['Desktop Chrome'] },   // see 5.2 for the maximized window settings
   },
 
   /* Disabled for now to focus on Chrome. Uncomment to test these browsers again. */
@@ -205,6 +238,44 @@ projects: [
 > ```ts
 > use: { ...devices['Desktop Chrome'], channel: 'chrome' },
 > ```
+>
+> | | Playwright's Chromium (default) | Your installed Google Chrome |
+> |---|---|---|
+> | Version | Fixed, matches your Playwright version | Updates itself, can drift from what Playwright expects |
+> | Same on every computer / CI | ✅ Yes | ❌ Depends on what's installed |
+> | Setup | `npx playwright install` | Chrome must be installed wherever tests run |
+> | Google-only extras (e.g. some video formats) | ❌ No | ✅ Yes |
+>
+> Stick with Chromium unless a bug only shows up in real Chrome. Either way, the test opens a fresh, empty profile (no bookmarks, logins or extensions).
+
+### 5.2 Open a maximized browser window
+
+By default Playwright runs **headless** (no window at all) with a fixed 1280×720 page. To watch the tests in a full-size window, the `chromium` project uses these settings:
+
+```ts
+{
+  name: 'chromium',
+  /* Open a visible, maximized browser window. */
+  use: {
+    ...devices['Desktop Chrome'],
+    headless: false,
+    /* viewport: null lets the page fill the window instead of a fixed 1280x720. */
+    viewport: null,
+    /* deviceScaleFactor can't be combined with viewport: null, so drop it from the device preset. */
+    deviceScaleFactor: undefined,
+    launchOptions: { args: ['--start-maximized'] },
+  },
+},
+```
+
+| Setting | What it does |
+|---|---|
+| `headless: false` | Shows the browser window. Without it, there's nothing to maximize. |
+| `--start-maximized` | Opens the window maximized. |
+| `viewport: null` | Lets the page use the whole window. Without it, the page stays 1280×720 inside the big window. |
+| `deviceScaleFactor: undefined` | Playwright doesn't allow this together with `viewport: null`, so the value from `Desktop Chrome` is removed. |
+
+> 💡 To go back to fast, invisible runs, delete these four lines (or set `headless: true`).
 
 ---
 
@@ -342,11 +413,14 @@ In **`.github/workflows/playwright.yml`**, change the test step so CI also runs 
 |---|---|
 | `npm test` | Runs all tests in every browser enabled in the config (currently Chromium only, see [step 5.1](#51-choose-which-browsers-run)) |
 | `npm test -- --project=chromium` | Runs tests in one browser only, useful once several are enabled |
-| `npm test -- --headed` | Runs with the browser window visible |
 | `npm run test:ui` | Opens Playwright's interactive UI to watch and debug tests |
 | `npm run report` | Opens the HTML report from the last run |
 
+> ℹ️ No `--headed` flag is needed: the config already opens a visible, maximized window (see [step 5.2](#52-open-a-maximized-browser-window)).
+
 > ⚠️ Use `npm test`, **not** `npx playwright test`. The plain Playwright command skips `bddgen`, so changes to `.feature` files won't be picked up.
+
+**How many tests run?** Each `Scenario:` is one test, not each `.feature` file. Right now there are 2 feature files with 1 scenario each, so 2 tests. A second scenario in `form.feature` would make 3. Each enabled browser runs every test again, so turning on Firefox and WebKit would make it 2 × 3 = 6.
 
 ---
 
@@ -439,8 +513,12 @@ Feature: Practice site form
     When I enter a random name
     And I enter a random email
     And I enter a random phone number
+    And I enter a random address
+    And I select a gender
     Then the form should show the entered values
 ```
+
+> ⚠️ Each line must match its step code **exactly**, including small words like "a". If `And I enter a random address` is written as `'I enter random address'` in the code, the step never runs and the value it should save stays `undefined`.
 
 > 💡 The scenario says *"a random email"*, not the actual email. Generating the value is the step code's job, so the `.feature` file stays readable.
 
@@ -448,13 +526,17 @@ Feature: Practice site form
 
 ### 9.4 Write the steps
 
-The page's fields have a `maxlength`, so each generated value is kept within it:
+The text fields have a `maxlength`, so each generated value is kept within it:
 
 | Field | Locator | maxlength | Example value |
 |---|---|---|---|
 | Name | `#name` | 15 | `Ana Rose Lee` |
 | Email | `#email` | 25 | `kaylee482@test.com` |
 | Phone | `#phone` | 10 | `4829105736` |
+| Address | `#textarea` | none | `4821 Maple Street` |
+| Gender | `#male` / `#female` | (radio buttons) | `female` |
+
+> 💡 Always take the locator from the page's HTML. The Address field's id is `textarea`, not `address`. Its `<label for="textarea">` points to the same id. The gender ids are lowercase (`male`, not `Male`), and there's no "Other" option.
 
 **`features/steps/form.steps.ts`**
 
@@ -489,12 +571,29 @@ When('I enter a random phone number', async ({ page, formData }) => {
   await page.locator('#phone').pressSequentially(formData.phone, { delay: TYPING_DELAY });
 });
 
+When('I enter a random address', async ({ page, formData }) => {
+  formData.address = faker.location.streetAddress();
+  // await page.locator('#textarea').fill(formData.address);
+  await page.locator('#textarea').pressSequentially(formData.address, { delay: TYPING_DELAY });
+});
+
+When('I select a gender', async ({ page, formData }) => {
+  /* The page only has Male and Female, and their ids are lowercase. */
+  formData.gender = faker.helpers.arrayElement(['male', 'female']);
+  await page.locator(`#${formData.gender}`).check();
+});
+
 Then('the form should show the entered values', async ({ page, formData }) => {
   await expect(page.locator('#name')).toHaveValue(formData.name);
   await expect(page.locator('#email')).toHaveValue(formData.email);
   await expect(page.locator('#phone')).toHaveValue(formData.phone);
+  await expect(page.locator('#textarea')).toHaveValue(formData.address);
+  await expect(page.locator(`#${formData.gender}`)).toBeChecked();
 });
 ```
+
+- **Name:** first, middle and last name rarely fit in 15 characters together, so the `do ... while` loop keeps picking new names until they do. That gives a complete name instead of one cut off with `.slice()`.
+- **Gender:** `faker.helpers.arrayElement([...])` picks one item from a list at random. Radio buttons are selected with `.check()` and verified with `toBeChecked()`, not `toHaveValue()`.
 
 ### 9.5 `fill()` vs `pressSequentially()`
 
@@ -507,7 +606,7 @@ Both put text into a field, but in different ways:
 | Page events | One `input` event | keydown, keypress, input and keyup for **every** character |
 | Use it when | Most of the time, because it's fast and reliable | You want to **watch** the typing, or the page reacts to each key (autocomplete, live validation) |
 
-This project uses `pressSequentially()` with `TYPING_DELAY` so you can follow along in `--headed` or UI mode. The `fill()` lines are kept as comments so you can switch back. To go faster or slower, change the one `TYPING_DELAY` number. A 10-digit phone number at 100 ms takes about 1 second.
+This project uses `pressSequentially()` with `TYPING_DELAY` so you can follow along in the browser window. The `fill()` lines are kept as comments so you can switch back. To go faster or slower, change the one `TYPING_DELAY` number. A 10-digit phone number at 100 ms takes about 1 second.
 
 ### 9.6 Tips for random data
 
@@ -665,7 +764,7 @@ on:
 
 ---
 
-## 11. Protect the `main` branch
+## 12. Protect the `main` branch
 
 Branch protection makes GitHub enforce the "production" rules: nobody can push straight to `main`, and a PR can only be merged when the tests pass.
 
@@ -673,7 +772,7 @@ This is set on the GitHub **website**. Git commands in the terminal can't change
 
 > ℹ️ Branch protection is free for **public** repos. Private repos need a paid GitHub plan.
 
-### 11.1 Create a ruleset
+### 12.1 Create a ruleset
 
 1. Open your repo on GitHub and click **⚙️ Settings**.
 2. In the left sidebar under **Code and automation**, click **Rules → Rulesets**. Or click **Branches**, which offers the same thing.
@@ -698,7 +797,7 @@ This is set on the GitHub **website**. Git commands in the terminal can't change
 
 > ℹ️ **`test` doesn't show up when adding status checks?** GitHub only lists checks that have run at least once recently. Push `main` or open a PR, wait for the run in the **Actions** tab to finish, then try again.
 
-### 11.2 What changes afterwards
+### 12.2 What changes afterwards
 
 - `git push` directly to `main` is **rejected**. That's expected. All changes go through `milleandrei` and a Pull Request.
 - The **Merge** button on a PR stays grey until the tests show a green ✓.
@@ -706,7 +805,7 @@ This is set on the GitHub **website**. Git commands in the terminal can't change
 
 ---
 
-## 12. Recommended VS Code extensions
+## 13. Recommended VS Code extensions
 
 Open Extensions (`Ctrl+Shift+X`) and search for these IDs:
 
@@ -728,7 +827,7 @@ If the Cucumber extension can't find your step definitions, create `.vscode/sett
 
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 | Problem | Fix |
 |---|---|
@@ -738,17 +837,21 @@ If the Cucumber extension can't find your step definitions, create `.vscode/sett
 | My `.feature` changes aren't running | You ran `npx playwright test`. Use `npm test` instead. |
 | `Executable doesn't exist` / browser not found | Run `npx playwright install`. |
 | Tests don't appear in VS Code's Testing panel | Run `npx bddgen`, then click the refresh icon in the Testing panel. |
-| My branches look the same | That's normal right after creating a branch. They split once you commit. See [step 9](#9-branches-development-vs-production). |
-| On GitHub I only see my development branch, not `main` | `main` was never pushed. Run `git push -u origin main`, then make it the default branch. See [step 9.1](#91-set-up-both-branches-one-time). |
+| `expected value must be a string or regular expression` / `Expected has value: undefined` | The step that should save the value never ran. Check that the step text in the code matches the `.feature` line exactly. See [step 9.3](#93-write-the-scenario). |
+| A locator times out or finds nothing | The id doesn't match the page. Check the HTML, e.g. Address is `#textarea`, not `#address`. See [step 9.4](#94-write-the-steps). |
+| `Cannot find name 'process'` in `playwright.config.ts` | Add a `tsconfig.json` with `"types": ["node"]`. See [step 4.3](#43-add-a-tsconfigjson). |
+| Two browser windows open at once | Several workers are running tests in parallel. Set `workers: 1`. See [step 5](#5-configure-playwright). |
+| My branches look the same | That's normal right after creating a branch. They split once you commit. See [step 10](#10-branches-development-vs-production). |
+| On GitHub I only see my development branch, not `main` | `main` was never pushed. Run `git push -u origin main`, then make it the default branch. See [step 10.1](#101-set-up-both-branches-one-time). |
 | My development branch is the "default" on GitHub | It was the first branch pushed. Change it under **Settings → General → Default branch**. |
-| Tests didn't run on GitHub after I pushed | Pushes to `milleandrei` don't trigger tests, only PRs and `main` do. See [step 10.1](#101-when-do-the-tests-run). |
-| `This ruleset does not target any resources` | Add `main` under **Target branches → Include by pattern**. See [step 11.1](#111-create-a-ruleset). |
+| Tests didn't run on GitHub after I pushed | Pushes to `milleandrei` don't trigger tests, only PRs and `main` do. See [step 11.1](#111-when-do-the-tests-run). |
+| `This ruleset does not target any resources` | Add `main` under **Target branches → Include by pattern**. See [step 12.1](#121-create-a-ruleset). |
 | `git push` to `main` is rejected | Branch protection is working. Push to `milleandrei` and open a Pull Request instead. |
-| The **Merge** button is grey | Tests haven't passed yet, or **Required approvals** is above 0. See [step 11](#11-protect-the-main-branch). |
+| The **Merge** button is grey | Tests haven't passed yet, or **Required approvals** is above 0. See [step 12](#12-protect-the-main-branch). |
 
 ---
 
-## 14. Command cheat sheet
+## 15. Command cheat sheet
 
 ```bash
 # ---- One-time setup ----
@@ -762,7 +865,6 @@ npx playwright install          # download browsers
 # ---- Running tests ----
 npm test                        # run all tests
 npm test -- --project=chromium  # Chrome only
-npm test -- --headed            # show the browser
 npm run test:ui                 # interactive UI mode
 npm run report                  # open last HTML report
 
