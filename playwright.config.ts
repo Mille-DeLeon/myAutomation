@@ -38,15 +38,18 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      /* Open a visible, maximized browser window. */
       use: {
         ...devices['Desktop Chrome'],
-        headless: false,
-        /* viewport: null lets the page fill the window instead of a fixed 1280x720. */
-        viewport: null,
-        /* deviceScaleFactor can't be combined with viewport: null, so drop it from the device preset. */
-        deviceScaleFactor: undefined,
-        launchOptions: { args: ['--start-maximized'] },
+        /* Open a visible, maximized browser window on your computer.
+           Skipped on CI (GitHub Actions), which has no screen and must run headless. */
+        ...(!process.env.CI && {
+          headless: false,
+          /* viewport: null lets the page fill the window instead of a fixed 1280x720. */
+          viewport: null,
+          /* deviceScaleFactor can't be combined with viewport: null, so drop it from the device preset. */
+          deviceScaleFactor: undefined,
+          launchOptions: { args: ['--start-maximized'] },
+        }),
       },
     },
 
