@@ -6,4 +6,5 @@ Feature: Practice site form
     And I enter a random email
     And I enter a random phone number
     And I enter a random address
+    And I select a gender
     Then the form should show the entered values

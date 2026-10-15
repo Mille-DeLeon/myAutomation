@@ -34,9 +34,16 @@ When('I enter a random address', async ({ page, formData }) => {
   await page.locator('#textarea').pressSequentially(formData.address, { delay: TYPING_DELAY });
 });
 
+When('I select a gender', async ({ page, formData }) => {
+  /* The page only has Male and Female, and their ids are lowercase. */
+  formData.gender = faker.helpers.arrayElement(['male', 'female']);
+  await page.locator(`#${formData.gender}`).check();
+});
+
 Then('the form should show the entered values', async ({ page, formData }) => {
   await expect(page.locator('#name')).toHaveValue(formData.name);
   await expect(page.locator('#email')).toHaveValue(formData.email);
   await expect(page.locator('#phone')).toHaveValue(formData.phone);
   await expect(page.locator('#textarea')).toHaveValue(formData.address);
+  await expect(page.locator(`#${formData.gender}`)).toBeChecked();
 });
