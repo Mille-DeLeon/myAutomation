@@ -255,18 +255,23 @@ By default Playwright runs **headless** (no window at all) with a fixed 1280×72
 ```ts
 {
   name: 'chromium',
-  /* Open a visible, maximized browser window. */
   use: {
     ...devices['Desktop Chrome'],
-    headless: false,
-    /* viewport: null lets the page fill the window instead of a fixed 1280x720. */
-    viewport: null,
-    /* deviceScaleFactor can't be combined with viewport: null, so drop it from the device preset. */
-    deviceScaleFactor: undefined,
-    launchOptions: { args: ['--start-maximized'] },
+    /* Open a visible, maximized browser window on your computer.
+       Skipped on CI (GitHub Actions), which has no screen and must run headless. */
+    ...(!process.env.CI && {
+      headless: false,
+      /* viewport: null lets the page fill the window instead of a fixed 1280x720. */
+      viewport: null,
+      /* deviceScaleFactor can't be combined with viewport: null, so drop it from the device preset. */
+      deviceScaleFactor: undefined,
+      launchOptions: { args: ['--start-maximized'] },
+    }),
   },
 },
 ```
+
+> ⚠️ **Why `!process.env.CI`?** GitHub Actions runs tests on a server with no screen. A visible window can't open there, so every test fails with *"Looks like you launched a headed browser without having a XServer running"*. GitHub sets `CI` automatically, so these settings only apply on your own computer and CI runs headless.
 
 | Setting | What it does |
 |---|---|
@@ -840,6 +845,7 @@ If the Cucumber extension can't find your step definitions, create `.vscode/sett
 | `expected value must be a string or regular expression` / `Expected has value: undefined` | The step that should save the value never ran. Check that the step text in the code matches the `.feature` line exactly. See [step 9.3](#93-write-the-scenario). |
 | A locator times out or finds nothing | The id doesn't match the page. Check the HTML, e.g. Address is `#textarea`, not `#address`. See [step 9.4](#94-write-the-steps). |
 | `Cannot find name 'process'` in `playwright.config.ts` | Add a `tsconfig.json` with `"types": ["node"]`. See [step 4.3](#43-add-a-tsconfigjson). |
+| GitHub Actions: `Looks like you launched a headed browser without having a XServer running` | The headed/maximized settings must be skipped on CI. Wrap them in `...(!process.env.CI && { ... })`. See [step 5.2](#52-open-a-maximized-browser-window). |
 | Two browser windows open at once | Several workers are running tests in parallel. Set `workers: 1`. See [step 5](#5-configure-playwright). |
 | My branches look the same | That's normal right after creating a branch. They split once you commit. See [step 10](#10-branches-development-vs-production). |
 | On GitHub I only see my development branch, not `main` | `main` was never pushed. Run `git push -u origin main`, then make it the default branch. See [step 10.1](#101-set-up-both-branches-one-time). |
